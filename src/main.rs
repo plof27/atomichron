@@ -1,4 +1,7 @@
-use clap::{ArgAction, Args, Parser, Subcommand};
+use std::fmt::Display;
+
+use atomichron::EntryList;
+use clap::{Args, Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -15,7 +18,7 @@ enum Commands {
     /// Stops the current time entry. If project or description are provided, they will overwrite any project or description set when the timer was started.
     Stop(EntryInfo),
     /// Stops the current time entry, then discards it.
-    Reset,
+    Clear,
     /// Displays the current status.
     Status,
     /// Logs all entries, grouped by day.
@@ -29,23 +32,44 @@ struct EntryInfo {
     /// Optional description for this entry
     description: Option<String>,
 
-    /// Optional list of tags for this entry
-    #[arg(short, long, action=ArgAction::Append)]
+    /// Optional list of tags for this entry, separated by commas
+    #[arg(short, long, value_delimiter = ',')]
     tags: Vec<String>,
+}
+
+impl Display for EntryInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}: {} {:?}",
+            self.project.as_ref().unwrap_or(&"".to_string()),
+            self.description.as_ref().unwrap_or(&"".to_string()),
+            self.tags
+        )
+    }
 }
 
 fn main() {
     let args = Cli::parse();
+    let mut entries = EntryList::new();
 
     match &args.command {
         Commands::Start(info) => {
-            println!(
-                "Starting {:?}: {:?} +{:?}",
-                info.project, info.description, info.tags
+            println!("Starting {}", info);
+            entries.start_entry(
+                info.project.clone(),
+                info.description.clone(),
+                info.tags.clone(),
             );
         }
-        Commands::Stop(info) => todo!(),
-        Commands::Reset => todo!(),
+        Commands::Stop(info) => match entries.stop_current_entry() {
+            Some(_) => println!("Stopping {}", info),
+            None => println!("No entry started"),
+        },
+        Commands::Clear => match entries.clear_current_entry() {
+            Some(_) => println!("Entry cleared"),
+            None => println!("No entry started"),
+        },
         Commands::Status => todo!(),
         Commands::Log => todo!(),
     }
