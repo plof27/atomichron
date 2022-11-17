@@ -1,10 +1,7 @@
 use clap::{Args, Parser, Subcommand};
-use std::{
-    fmt::Display,
-    fs::{self, File},
-};
+use std::fmt::Display;
 
-use atomichron::{EntryList, EVENT_OUTPUT_TARGET};
+use atomichron::EntryList;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -53,50 +50,47 @@ impl Display for EntryInfo {
     }
 }
 
-fn main() {
-    // Init logger
-    fern::Dispatch::new()
-        .format(|out, message, record| out.finish(format_args!("[{}] {}", record.level(), message)))
-        .filter(|metadata| metadata.target() == EVENT_OUTPUT_TARGET)
-        .chain(std::io::stdout())
-        .apply()
-        .expect("Failed to initialize logger");
-
+fn main() -> atomichron::Result<()> {
     // Load entries
-    let mut entries = match fs::read("./entries.ron") {
-        Ok(bytes) => ron::de::from_bytes(&bytes).expect("Failure deserializing time entries"),
-        Err(_) => EntryList::new(),
-    };
+    let mut entries = EntryList::load()?;
 
     // Read and process args
     let args = Cli::parse();
 
     match &args.command {
         Commands::Start(info) => {
-            entries.start_entry(
+            if let Some(entry) = entries.stop_current_entry(None, None, Vec::new()) {
+                println!("Stopping entry {}", entry);
+            }
+
+            let new_entry = entries.start_entry(
                 info.project.clone(),
                 info.description.clone(),
                 info.tags.clone(),
             );
+            println!("Starting entry {}", new_entry);
         }
-        Commands::Stop(info) => {
-            if entries.stop_current_entry().is_none() {
-                println!("No entry started");
-            }
-        }
-        Commands::Clear => {
-            if entries.clear_current_entry().is_none() {
-                println!("No entry started");
-            }
-        }
+        Commands::Stop(info) => match entries.stop_current_entry(
+            info.project.clone(),
+            info.description.clone(),
+            info.tags.clone(),
+        ) {
+            Some(entry) => println!("Stopping entry {}", entry),
+            None => println!("No entry started"),
+        },
+        Commands::Clear => match entries.clear_current_entry() {
+            Some(entry) => println!("Clearing entry {}", entry),
+            None => println!("No entry started"),
+        },
         Commands::Status => match entries.current_entry() {
-            Some(entry) => println!("Started project {:?}", entry),
+            Some(entry) => println!("Running timer for {}", entry),
             None => println!("No entry started"),
         },
         Commands::Log => todo!(),
     }
 
     // Save updated entries
-    let out_file = File::create("./entries.ron").expect("Failure opening entries file for writing");
-    ron::ser::to_writer(out_file, &entries).expect("Failure writing entries file");
+    entries.save()?;
+
+    Ok(())
 }

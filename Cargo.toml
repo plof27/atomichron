@@ -11,5 +11,4 @@ clap = { version = "4.0.15", features = ["derive"] }
 uuid = { version = "1.2.1", features = ["v4", "std"]}
 serde = "1.0.147"
 ron = "0.8.0"
-log = "0.4.17"
-fern = "0.6.1"
+thiserror = "1.0.37"
