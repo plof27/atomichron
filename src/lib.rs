@@ -1,11 +1,12 @@
-use std::{collections::HashMap, time::SystemTime};
+use std::{collections::HashMap, fmt::Display, time::SystemTime};
 
-use uuid::Uuid;
+use serde::{Deserialize, Serialize};
+use uuid::{Bytes, Uuid};
 
 /// A single time entry
-#[derive(Debug)]
-struct Entry {
-    id: Uuid,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Entry {
+    id: Bytes,
 
     project: Option<String>,
     description: Option<String>,
@@ -18,7 +19,7 @@ struct Entry {
 impl Entry {
     fn new(project: Option<String>, description: Option<String>, tags: Vec<String>) -> Self {
         Entry {
-            id: Uuid::new_v4(),
+            id: Uuid::new_v4().into_bytes(),
             project,
             description,
             tags,
@@ -35,15 +36,17 @@ impl Entry {
 }
 
 /// A set of time entries
-#[derive(Debug, Default)]
+///
+/// We have to use raw [`Bytes`] here because [`Uuid`] doesn't implement [`Serialize`] or [`Deserialize`].
+#[derive(Debug, Default, Deserialize, Serialize)]
 pub struct EntryList {
     /// All entries
-    entries: HashMap<Uuid, Entry>,
+    entries: HashMap<Bytes, Entry>,
 
     /// The currently running entry, if any.
     ///
     /// This field is set when a new entry is started, and cleared when it is stopped (or reset)
-    current_entry: Option<Uuid>,
+    current_entry: Option<Bytes>,
 }
 
 impl EntryList {
@@ -73,17 +76,18 @@ impl EntryList {
 
     /// Stops the current entry, if any
     ///
-    /// Returns the [`Uuid`] of the entry stopped, if anything was actually stopped
-    pub fn stop_current_entry(&mut self) -> Option<Uuid> {
+    /// Returns the [`Entry`] of the entry stopped, if anything was actually stopped
+    pub fn stop_current_entry(&mut self) -> Option<&Entry> {
         if let Some(id) = self.current_entry {
-            self.entries
+            let entry = self
+                .entries
                 .get_mut(&id)
-                .expect("Failed to fetch current entry") // TODO: 2022-10-15 replace with actual error logging
-                .stop();
+                .expect("Failed to fetch current entry"); // TODO: 2022-10-15 replace with actual error logging
 
+            entry.stop();
             self.current_entry = None;
 
-            Some(id)
+            Some(entry)
         } else {
             None
         }
@@ -92,13 +96,16 @@ impl EntryList {
     /// Stops and discards the current entry, if any
     ///
     /// This effectively lets you "cancel" a entry that was started incorrectly
-    /// Returns the [`Uuid`] of the entry stopped, if anything was actually stopped
-    pub fn clear_current_entry(&mut self) -> Option<Uuid> {
+    /// Returns the [`Entry`] of the entry stopped, if anything was actually stopped
+    pub fn clear_current_entry(&mut self) -> Option<Entry> {
         if let Some(id) = self.current_entry {
-            self.entries.remove(&id);
+            let entry = self
+                .entries
+                .remove(&id)
+                .expect("Failed to fetch current entry");
             self.current_entry = None;
 
-            Some(id)
+            Some(entry)
         } else {
             None
         }

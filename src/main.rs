@@ -1,7 +1,10 @@
-use std::fmt::Display;
+use clap::{Args, Parser, Subcommand};
+use std::{
+    fmt::Display,
+    fs::{self, File},
+};
 
 use atomichron::EntryList;
-use clap::{Args, Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -30,6 +33,7 @@ struct EntryInfo {
     /// Optional project for this entry
     project: Option<String>,
     /// Optional description for this entry
+    #[arg(short, long)]
     description: Option<String>,
 
     /// Optional list of tags for this entry, separated by commas
@@ -51,7 +55,10 @@ impl Display for EntryInfo {
 
 fn main() {
     let args = Cli::parse();
-    let mut entries = EntryList::new();
+    let mut entries = match fs::read("./entries.ron") {
+        Ok(bytes) => ron::de::from_bytes(&bytes).expect("Failure deserializing time entries"),
+        Err(_) => EntryList::new(),
+    };
 
     match &args.command {
         Commands::Start(info) => {
@@ -73,4 +80,7 @@ fn main() {
         Commands::Status => todo!(),
         Commands::Log => todo!(),
     }
+
+    let out_file = File::create("./entries.ron").expect("Failure opening entries file for writing");
+    ron::ser::to_writer(out_file, &entries).expect("Failure writing entries file");
 }
