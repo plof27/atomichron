@@ -4,7 +4,7 @@ use std::{
     fs::{self, File},
 };
 
-use atomichron::EntryList;
+use atomichron::{EntryList, EVENT_OUTPUT_TARGET};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -54,33 +54,49 @@ impl Display for EntryInfo {
 }
 
 fn main() {
-    let args = Cli::parse();
+    // Init logger
+    fern::Dispatch::new()
+        .format(|out, message, record| out.finish(format_args!("[{}] {}", record.level(), message)))
+        .filter(|metadata| metadata.target() == EVENT_OUTPUT_TARGET)
+        .chain(std::io::stdout())
+        .apply()
+        .expect("Failed to initialize logger");
+
+    // Load entries
     let mut entries = match fs::read("./entries.ron") {
         Ok(bytes) => ron::de::from_bytes(&bytes).expect("Failure deserializing time entries"),
         Err(_) => EntryList::new(),
     };
 
+    // Read and process args
+    let args = Cli::parse();
+
     match &args.command {
         Commands::Start(info) => {
-            println!("Starting {}", info);
             entries.start_entry(
                 info.project.clone(),
                 info.description.clone(),
                 info.tags.clone(),
             );
         }
-        Commands::Stop(info) => match entries.stop_current_entry() {
-            Some(_) => println!("Stopping {}", info),
+        Commands::Stop(info) => {
+            if entries.stop_current_entry().is_none() {
+                println!("No entry started");
+            }
+        }
+        Commands::Clear => {
+            if entries.clear_current_entry().is_none() {
+                println!("No entry started");
+            }
+        }
+        Commands::Status => match entries.current_entry() {
+            Some(entry) => println!("Started project {:?}", entry),
             None => println!("No entry started"),
         },
-        Commands::Clear => match entries.clear_current_entry() {
-            Some(_) => println!("Entry cleared"),
-            None => println!("No entry started"),
-        },
-        Commands::Status => todo!(),
         Commands::Log => todo!(),
     }
 
+    // Save updated entries
     let out_file = File::create("./entries.ron").expect("Failure opening entries file for writing");
     ron::ser::to_writer(out_file, &entries).expect("Failure writing entries file");
 }
