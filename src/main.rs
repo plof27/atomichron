@@ -52,7 +52,7 @@ impl Display for EntryInfo {
 
 fn main() -> atomichron::Result<()> {
     // Load entries
-    let mut entries = EntryList::load()?;
+    let mut entries = EntryList::load_or_create("./entries.ron")?;
 
     // Read and process args
     let args = Cli::parse();
@@ -86,11 +86,16 @@ fn main() -> atomichron::Result<()> {
             Some(entry) => println!("Running timer for {}", entry),
             None => println!("No entry started"),
         },
-        Commands::Log => todo!(),
+        Commands::Log => {
+            let list = entries.get_entries_in_order(false);
+            for entry in list {
+                println!("{}", entry);
+            }
+        }
     }
 
     // Save updated entries
-    entries.save()?;
+    entries.save("./entries.ron")?;
 
     Ok(())
 }

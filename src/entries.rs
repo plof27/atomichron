@@ -4,6 +4,7 @@ use std::{
     fmt::Display,
     fs::{self, File},
     io::ErrorKind,
+    path::Path,
     time::SystemTime,
 };
 use uuid::{Bytes, Uuid};
@@ -11,7 +12,7 @@ use uuid::{Bytes, Uuid};
 use crate::{errors::Result, Error};
 
 /// A single time entry
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Eq, Serialize, Deserialize)]
 pub struct Entry {
     id: Bytes,
 
@@ -93,6 +94,24 @@ impl Display for Entry {
     }
 }
 
+impl PartialEq for Entry {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl PartialOrd for Entry {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.start_time.partial_cmp(&other.start_time)
+    }
+}
+
+impl Ord for Entry {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.start_time.cmp(&other.start_time)
+    }
+}
+
 /// Error message to use for `.expect(...)` when attempting to retrieve the current entry from the entry list
 ///
 /// This case comes up a lot, so it's useful to standardize the message.
@@ -104,12 +123,12 @@ const NO_CURRENT_ENTRY_MESSAGE: &str = "Failure retrieving current entry from en
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub struct EntryList {
     /// All entries
-    entries: HashMap<Bytes, Entry>,
+    pub(crate) entries: HashMap<Bytes, Entry>,
 
     /// The currently running entry, if any.
     ///
     /// This field is set when a new entry is started, and cleared when it is stopped (or reset)
-    current_entry: Option<Bytes>,
+    pub(crate) current_entry: Option<Bytes>,
 }
 
 impl EntryList {
@@ -121,12 +140,30 @@ impl EntryList {
         }
     }
 
-    /// Creates a new entry list from the file save location specified in the config
+    /// Deserializes an entry list from the file path provided
     ///
-    /// If the file isn't found, then a new, empty, entry list is created.
-    /// TODO 2022-11-17: Make this actually work based on config instead of using a hard-coded path
-    pub fn load() -> Result<Self> {
-        match fs::read("./entries.ron") {
+    /// # Errors
+    /// - Returns an error if anything goes wrong reading the file
+    pub fn load<P>(path: P) -> Result<Self>
+    where
+        P: AsRef<Path>,
+    {
+        match fs::read(path) {
+            Ok(bytes) => ron::de::from_bytes(&bytes).map_err(Error::from),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Deserializes an entry list from the file path provided, or creates a new
+    /// one if the file does not exist.
+    ///
+    /// # Errors
+    /// - Returns and error if anything goes wrong reading the file (other than not finding it)
+    pub fn load_or_create<P>(path: P) -> Result<Self>
+    where
+        P: AsRef<Path>,
+    {
+        match fs::read(path) {
             Ok(bytes) => ron::de::from_bytes(&bytes).map_err(Error::from),
             Err(e) => {
                 if e.kind() == ErrorKind::NotFound {
@@ -138,11 +175,12 @@ impl EntryList {
         }
     }
 
-    /// Serializes and saves this entry list to the file save location specified in the config
-    ///
-    /// TODO 2022-11-17: Make this actually work based on config instead of using a hard-coded path
-    pub fn save(&self) -> Result<()> {
-        let out_file = File::create("./entries.ron")?;
+    /// Serializes and saves this entry list to the path provided
+    pub fn save<P>(&self, path: P) -> Result<()>
+    where
+        P: AsRef<Path>,
+    {
+        let out_file = File::create(path)?;
         ron::ser::to_writer(out_file, self)?;
         Ok(())
     }

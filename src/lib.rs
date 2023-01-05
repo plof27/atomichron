@@ -1,3 +1,4 @@
+pub mod aggregate;
 mod entries;
 mod errors;
 

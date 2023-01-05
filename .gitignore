@@ -9,3 +9,6 @@
 # Added by cargo
 
 /target
+
+# Test data files
+entries.ron
